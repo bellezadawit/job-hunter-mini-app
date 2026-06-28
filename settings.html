@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Hunter Settings</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body { font-family: sans-serif; margin: 16px; background: #f5f5f5; }
+        .container { max-width: 400px; margin: 0 auto; }
+        h2 { color: #2b5278; }
+        label { display: block; margin-top: 12px; font-weight: bold; }
+        select, input[type="text"], textarea { width: 100%; padding: 10px; margin-top: 4px; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; }
+        button { 
+            background: #2b5278; color: white; border: none; 
+            padding: 14px; width: 100%; border-radius: 8px; 
+            font-size: 16px; margin-top: 20px; cursor: pointer;
+        }
+        button:active { opacity: 0.8; }
+        .feed-checkbox { display: flex; align-items: center; margin-top: 4px; }
+        .feed-checkbox input { margin-right: 8px; width: auto; }
+        .custom-feed { margin-top: 15px; border-top: 1px solid #ccc; padding-top: 15px; }
+        .added-feeds { margin-top: 10px; font-size: 14px; color: #555; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>⚙️ Job Feed Settings</h2>
+        <p>Choose which feeds to scan for jobs. You can also add your own RSS links.</p>
+        
+        <label>Built‑in Feeds</label>
+        <div id="builtinFeeds"></div>
+        
+        <div class="custom-feed">
+            <label>Add custom RSS URL</label>
+            <input type="text" id="customFeed" placeholder="https://example.com/jobs.rss">
+            <button type="button" onclick="addCustomFeed()" style="margin-top:8px; background:#888;">➕ Add</button>
+        </div>
+        
+        <div class="added-feeds" id="customFeedList"></div>
+        
+        <hr>
+        <label>Job Type Filter</label>
+        <select id="jobType">
+            <option value="all">All</option>
+            <option value="remote">Remote</option>
+            <option value="internship">Internship</option>
+            <option value="graduate">Graduate / Entry</option>
+            <option value="abroad">Abroad (visa sponsorship)</option>
+        </select>
+        
+        <label>Keywords (comma separated)</label>
+        <input type="text" id="keywords" placeholder="e.g. python, marketing, data">
+        
+        <label>Preferred Location (optional)</label>
+        <input type="text" id="location" placeholder="e.g. Europe, USA, Remote">
+        
+        <button onclick="saveSettings()">💾 Save & Close</button>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+
+        // Built‑in feeds (will be stored in an array)
+        const BUILTIN_FEEDS = [
+            { name: "Remote OK", url: "https://remoteok.com/remote-jobs.rss" },
+            { name: "We Work Remotely (Programming)", url: "https://weworkremotely.com/categories/remote-programming-jobs.rss" },
+            { name: "Remotive", url: "https://remotive.com/remote-jobs/feed" },
+            { name: "FreshRemote.work", url: "https://www.freshremote.work/rss" }
+        ];
+
+        // State
+        let selectedFeeds = [];      // URLs that are checked
+        let customFeeds = [];        // user‑added URLs
+
+        function renderFeeds() {
+            const container = document.getElementById('builtinFeeds');
+            container.innerHTML = '';
+            BUILTIN_FEEDS.forEach(feed => {
+                const div = document.createElement('div');
+                div.className = 'feed-checkbox';
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.value = feed.url;
+                checkbox.id = 'feed_' + feed.url;
+                checkbox.checked = selectedFeeds.includes(feed.url);
+                checkbox.addEventListener('change', () => {
+                    if (checkbox.checked) {
+                        if (!selectedFeeds.includes(feed.url)) selectedFeeds.push(feed.url);
+                    } else {
+                        selectedFeeds = selectedFeeds.filter(u => u !== feed.url);
+                    }
+                });
+                const label = document.createElement('label');
+                label.htmlFor = checkbox.id;
+                label.textContent = feed.name;
+                div.appendChild(checkbox);
+                div.appendChild(label);
+                container.appendChild(div);
+            });
+        }
+
+        function renderCustomFeeds() {
+            const list = document.getElementById('customFeedList');
+            list.innerHTML = '';
+            customFeeds.forEach(url => {
+                const div = document.createElement('div');
+                div.style.display = 'flex';
+                div.style.justifyContent = 'space-between';
+                div.style.alignItems = 'center';
+                div.textContent = url;
+                const removeBtn = document.createElement('button');
+                removeBtn.textContent = '❌';
+                removeBtn.style.background = 'none';
+                removeBtn.style.border = 'none';
+                removeBtn.style.cursor = 'pointer';
+                removeBtn.onclick = () => {
+                    customFeeds = customFeeds.filter(u => u !== url);
+                    renderCustomFeeds();
+                };
+                div.appendChild(removeBtn);
+                list.appendChild(div);
+            });
+        }
+
+        function addCustomFeed() {
+            const input = document.getElementById('customFeed');
+            const url = input.value.trim();
+            if (url && !customFeeds.includes(url) && !BUILTIN_FEEDS.map(f=>f.url).includes(url)) {
+                customFeeds.push(url);
+                input.value = '';
+                renderCustomFeeds();
+            }
+        }
+
+        // Load saved prefs
+        tg.CloudStorage.getItem('prefs', (err, val) => {
+            if (val) {
+                try {
+                    const prefs = JSON.parse(val);
+                    selectedFeeds = prefs.selectedFeeds || [];
+                    customFeeds = prefs.customFeeds || [];
+                    document.getElementById('jobType').value = prefs.jobType || 'all';
+                    document.getElementById('keywords').value = prefs.keywords || '';
+                    document.getElementById('location').value = prefs.location || '';
+                } catch(e) {}
+            }
+            renderFeeds();
+            renderCustomFeeds();
+        });
+
+        function saveSettings() {
+            const prefs = {
+                selectedFeeds: selectedFeeds,
+                customFeeds: customFeeds,
+                jobType: document.getElementById('jobType').value,
+                keywords: document.getElementById('keywords').value,
+                location: document.getElementById('location').value
+            };
+            tg.CloudStorage.setItem('prefs', JSON.stringify(prefs));
+            tg.sendData(JSON.stringify(prefs));
+            tg.close();
+        }
+    </script>
+</body>
+</html>
